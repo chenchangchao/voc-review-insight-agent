@@ -1,0 +1,42 @@
+# dependencies
+node_modules
+.bun
+.pnpm-store
+
+# build
+.next
+dist
+build
+.out
+
+# env
+.env
+.env.*
+!.env.example
+
+# logs
+*.log
+logs
+.pm2
+
+# system
+.DS_Store
+
+# data
+data
+export
+exports
+uploads
+*.csv
+*.txt
+*.xlsx
+*.xls
+*.gz
+*.zip
+*.sqlite
+*.db
+
+# vector / model cache
+chroma
+.vector
+.cache
