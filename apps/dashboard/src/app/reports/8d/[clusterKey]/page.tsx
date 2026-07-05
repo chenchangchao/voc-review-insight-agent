@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Report8DClient } from "@/components/Report8DClient";
 import { getClusterReviews, getClusters } from "@/lib/api";
 
+export const dynamic = "force-dynamic";
+
 export default async function Report8DPage({
   params
 }: {

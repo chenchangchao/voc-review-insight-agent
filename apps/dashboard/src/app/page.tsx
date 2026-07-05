@@ -1,6 +1,8 @@
 import { DashboardClient } from "@/components/DashboardClient";
 import { getClusters, getHealth, getMetrics } from "@/lib/api";
 
+export const dynamic = "force-dynamic";
+
 export default async function HomePage() {
   const [health, metrics, clustersResult] = await Promise.all([
     getHealth(),

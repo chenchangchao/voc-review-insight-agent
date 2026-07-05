@@ -2,6 +2,8 @@ import Link from "next/link";
 import { ClusterDetailClient } from "@/components/ClusterDetailClient";
 import { getClusterReviews, getClusters } from "@/lib/api";
 
+export const dynamic = "force-dynamic";
+
 export default async function ClusterDetailPage({
   params
 }: {
