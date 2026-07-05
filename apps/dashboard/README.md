@@ -176,6 +176,13 @@ bun install
 ```bash
 cat > .env.local <<'ENV'
 NEXT_PUBLIC_API_BASE_URL=https://api.chenchangchao.com
+EMAIL_SMTP_HOST=smtp.example.com
+EMAIL_SMTP_PORT=587
+EMAIL_SMTP_SECURE=false
+EMAIL_SMTP_USER=sender@example.com
+EMAIL_SMTP_PASS=your-password-or-app-password
+EMAIL_FROM="VOC Review Insight Agent <sender@example.com>"
+EMAIL_WORKFLOW_SECRET=change-me
 ENV
 ```
 
@@ -185,7 +192,38 @@ ENV
 cp .env.example .env.local
 ```
 
-### 7.3 启动开发环境
+### 7.3 邮箱推送与定时 Workflow
+
+工作台支持在生成 8D 报告后输入收件邮箱并发送 Markdown 报告。SMTP 配置只在服务端读取，不会暴露给浏览器。
+
+常用环境变量：
+
+| 变量 | 说明 |
+| --- | --- |
+| `EMAIL_SMTP_HOST` | SMTP 服务器地址 |
+| `EMAIL_SMTP_PORT` | SMTP 端口，常用 `587` 或 `465` |
+| `EMAIL_SMTP_SECURE` | `465` 通常为 `true`，`587` 通常为 `false` |
+| `EMAIL_SMTP_USER` | 发件邮箱账号 |
+| `EMAIL_SMTP_PASS` | SMTP 密码或应用专用密码 |
+| `EMAIL_FROM` | 发件人显示名和邮箱 |
+| `EMAIL_WORKFLOW_SECRET` | 定时 workflow 调用密钥 |
+| `EMAIL_WORKFLOW_RECIPIENTS` | 定时报告默认收件人，多个邮箱用逗号分隔 |
+| `EMAIL_WORKFLOW_CLUSTER_KEYS` | 定时报告指定问题簇，留空则按严重度自动选择 |
+| `EMAIL_WORKFLOW_MAX_CLUSTERS` | 自动选择的问题簇数量，默认 `3` |
+
+定时任务可以由 cron、PM2 cron、GitHub Actions 或云函数调用：
+
+```bash
+curl -X POST https://voc.chenchangchao.com/api/agent/email-workflow \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer change-me' \
+  -d '{
+    "recipients": ["quality@example.com"],
+    "clusterKeys": ["dash_cam_power_reboot_failure"]
+  }'
+```
+
+### 7.4 启动开发环境
 
 ```bash
 bun run dev

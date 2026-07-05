@@ -1,34 +1,26 @@
 import {
+  cleanAgentText,
   generate8DReportByAgent,
   getAgentClusters,
   sendFeishuInteractiveCard
 } from "@/lib/server/voc-agent";
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
+// export const dynamic = "force-dynamic";
+// export const runtime = "nodejs";
 export const maxDuration = 120;
 
-function cleanText(text: string) {
-  return text.replace(/\\n/g, "\n").trim();
-}
-
 function extractFeishuSummary(report: string) {
-  const cleaned = cleanText(report);
+  const cleaned = cleanAgentText(report);
   const marker = "飞书推送摘要";
   const idx = cleaned.indexOf(marker);
 
   if (idx >= 0) {
     return cleaned
       .slice(idx)
-      .replace(/^#+\s*/gm, "")
-      .replace(/\*\*/g, "")
       .slice(0, 900);
   }
 
-  return cleaned
-    .replace(/^#+\s*/gm, "")
-    .replace(/\*\*/g, "")
-    .slice(0, 900);
+  return cleaned.slice(0, 900);
 }
 
 export async function POST(request: Request) {
@@ -66,10 +58,10 @@ export async function POST(request: Request) {
     }
 
     if (report && typeof report === "string") {
-      reportText = cleanText(report);
+      reportText = cleanAgentText(report);
     } else {
       const result = await generate8DReportByAgent(clusterKey);
-      reportText = cleanText(result.report);
+      reportText = cleanAgentText(result.report);
       cluster = result.cluster;
     }
 

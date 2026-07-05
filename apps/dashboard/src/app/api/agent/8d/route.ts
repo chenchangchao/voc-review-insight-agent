@@ -1,13 +1,17 @@
 import { generate8DReportByAgent } from "@/lib/server/voc-agent";
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
+// export const dynamic = "force-dynamic";
+// export const runtime = "nodejs";
 export const maxDuration = 120;
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const clusterKey = body.clusterKey;
+    const question = typeof body.question === "string" ? body.question : "";
+    const previousReport =
+      typeof body.previousReport === "string" ? body.previousReport : "";
+    const mode = body.mode === "follow_up" ? "follow_up" : "report";
 
     if (!clusterKey || typeof clusterKey !== "string") {
       return Response.json(
@@ -21,7 +25,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const result = await generate8DReportByAgent(clusterKey);
+    const result = await generate8DReportByAgent(clusterKey, {
+      question,
+      previousReport,
+      mode
+    });
 
     return Response.json({
       cluster_key: clusterKey,

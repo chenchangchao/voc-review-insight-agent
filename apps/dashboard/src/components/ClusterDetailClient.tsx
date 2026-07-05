@@ -402,7 +402,7 @@ function InfoCard({ label, value }: { label: string; value: string | number }) {
   );
 }
 
-function groupCount<T extends Record<string, any>>(
+function groupCount<T extends Record<string, unknown>>(
   items: T[],
   key: keyof T
 ): { name: string; value: number }[] {

@@ -1,4 +1,4 @@
-import "dotenv/config";
+import "./env";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { z } from "zod";

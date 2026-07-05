@@ -1,6 +1,13 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState
+} from "react";
 
 type Theme = "light" | "dark" | "system";
 
@@ -19,41 +26,49 @@ function getSystemTheme(): "light" | "dark" {
     : "light";
 }
 
+function getSavedTheme(): Theme {
+  if (typeof window === "undefined") return "dark";
+
+  const saved = window.localStorage.getItem("voc-dashboard-theme");
+  return saved === "light" || saved === "dark" || saved === "system"
+    ? saved
+    : "dark";
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("dark");
-  const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("dark");
+  const [systemTheme, setSystemTheme] = useState<"light" | "dark">("dark");
+  const resolvedTheme = theme === "system" ? systemTheme : theme;
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("voc-dashboard-theme") as Theme | null;
-    if (saved === "light" || saved === "dark" || saved === "system") {
-      setThemeState(saved);
-    }
+    const timer = window.setTimeout(() => {
+      setThemeState(getSavedTheme());
+      setSystemTheme(getSystemTheme());
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, []);
 
   useEffect(() => {
-    const applyTheme = () => {
-      const nextResolved = theme === "system" ? getSystemTheme() : theme;
-      setResolvedTheme(nextResolved);
+    document.documentElement.classList.remove("light", "dark");
+    document.documentElement.classList.add(resolvedTheme);
+    document.documentElement.dataset.theme = theme;
+  }, [resolvedTheme, theme]);
 
-      document.documentElement.classList.remove("light", "dark");
-      document.documentElement.classList.add(nextResolved);
-      document.documentElement.dataset.theme = theme;
-    };
-
-    applyTheme();
-
+  useEffect(() => {
     if (theme !== "system") return;
 
     const media = window.matchMedia("(prefers-color-scheme: dark)");
-    media.addEventListener("change", applyTheme);
+    const syncSystemTheme = () => setSystemTheme(getSystemTheme());
+    media.addEventListener("change", syncSystemTheme);
 
-    return () => media.removeEventListener("change", applyTheme);
+    return () => media.removeEventListener("change", syncSystemTheme);
   }, [theme]);
 
-  function setTheme(nextTheme: Theme) {
+  const setTheme = useCallback((nextTheme: Theme) => {
     setThemeState(nextTheme);
     window.localStorage.setItem("voc-dashboard-theme", nextTheme);
-  }
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -61,7 +76,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       resolvedTheme,
       setTheme
     }),
-    [theme, resolvedTheme]
+    [theme, resolvedTheme, setTheme]
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

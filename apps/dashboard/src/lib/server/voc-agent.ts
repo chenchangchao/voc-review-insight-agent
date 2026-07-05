@@ -1,13 +1,22 @@
 import type { Cluster, ClusterReview, Metrics } from "@/lib/api";
 import { formatDate, issueCategoryLabel, productLineLabel } from "@/lib/utils";
+import { marked } from "marked";
+import nodemailer from "nodemailer";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.chenchangchao.com";
+  process.env.VOC_API_INTERNAL_BASE_URL ||
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  process.env.NEXT_PUBLIC_VOC_API_BASE_URL ||
+  "https://api-voc.chenchangchao.com";
+
+const API_INTERNAL_HOST = process.env.VOC_API_INTERNAL_HOST;
 
 const DEEPSEEK_URL = process.env.DEEPSEEK_URL || "https://api.deepseek.com";
-const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || "deepseek-chat";
+const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
 const DEEPSEEK_API_KEY =
   process.env.DEEPSEEK_API || process.env.DEEPSEEK_API_KEY || "";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type ClusterListResponse = {
   count: number;
@@ -21,13 +30,26 @@ type ClusterReviewResponse = {
 };
 
 async function fetchJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const url = new URL(path.replace(/^\/+/, ""), `${API_BASE_URL.replace(/\/+$/, "")}/`);
+  const headers = new Headers();
+
+  if (API_INTERNAL_HOST) {
+    headers.set("Host", API_INTERNAL_HOST);
+  }
+
+  const res = await fetch(url, {
+    headers,
     cache: "no-store"
   });
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`VOC API request failed: ${res.status} ${text.slice(0, 300)}`);
+    throw new Error(
+      `VOC API request failed: ${res.status} ${url.toString()} ${text.slice(
+        0,
+        300
+      )}`
+    );
   }
 
   return res.json() as Promise<T>;
@@ -116,7 +138,7 @@ function buildLocal8DReport(params: {
   reviews: ClusterReview[];
   deepseekError?: string;
 }) {
-  const { metrics, cluster, reviews, deepseekError } = params;
+  const { cluster, reviews, deepseekError } = params;
 
   const marketplaces = Array.from(
     new Set(reviews.map((item) => item.marketplace))
@@ -338,7 +360,16 @@ function windowlessSetTimeout(fn: () => void, ms: number) {
   return setTimeout(fn, ms);
 }
 
-export async function generate8DReportByAgent(clusterKey: string) {
+type AgentReportOptions = {
+  question?: string;
+  previousReport?: string;
+  mode?: "report" | "follow_up";
+};
+
+export async function generate8DReportByAgent(
+  clusterKey: string,
+  options: string | AgentReportOptions = {}
+) {
   const [metrics, clustersResult, reviewsResult] = await Promise.all([
     getAgentMetrics(),
     getAgentClusters(),
@@ -361,7 +392,16 @@ export async function generate8DReportByAgent(clusterKey: string) {
     reviews
   });
 
-  const prompt = `请基于下面的 VOC 证据，生成一份 8D 报告草稿。
+  const normalizedOptions =
+    typeof options === "string" ? { question: options } : options;
+  const userQuestion = normalizedOptions.question?.trim();
+  const previousReport = cleanAgentText(normalizedOptions.previousReport || "");
+  const mode = normalizedOptions.mode || "report";
+
+  const reportPrompt = `请基于下面的 VOC 证据，生成一份 8D 报告草稿。
+
+用户问题：
+${userQuestion || "请生成标准 8D 报告草稿。"}
 
 要求：
 1. 输出 Markdown。
@@ -371,11 +411,32 @@ export async function generate8DReportByAgent(clusterKey: string) {
 5. D5/D6/D7 要给出可执行动作。
 6. 用语适合产品、质量、售后、研发团队协作。
 7. 最后给出“飞书推送摘要”，控制在 300 字以内。
+8. 不要使用 \`\`\`markdown 或任何代码块包裹整份报告，直接输出可渲染的 Markdown 正文。
+9. 优先回答“用户问题”，但不能编造 VOC 证据之外的事实；不确定处请标注为待验证假设。
 
 ${evidence}`;
 
+  const followUpPrompt = `请基于下面的 VOC 证据和已有 8D 报告，回答用户追问。
+
+用户追问：
+${userQuestion || "请补充说明当前 8D 报告。"}
+
+要求：
+1. 输出 Markdown。
+2. 回答要简洁、直接、可执行。
+3. 必须区分“已有 VOC 证据支持”和“待工程验证假设”。
+4. 不要重新生成完整 D1-D8，除非用户明确要求。
+5. 不要使用 \`\`\`markdown 或任何代码块包裹整份回答。
+
+## 已有 8D 报告
+${previousReport || "尚无已有报告。"}
+
+${evidence}`;
+
+  const prompt = mode === "follow_up" ? followUpPrompt : reportPrompt;
+
   try {
-    const report = await callDeepSeek(prompt);
+    const report = cleanAgentText(await callDeepSeek(prompt));
 
     return {
       cluster,
@@ -404,6 +465,138 @@ ${evidence}`;
       deepseek_error: message
     };
   }
+}
+
+export function cleanAgentText(text: string) {
+  return text
+    .replace(/\\n/g, "\n")
+    .split("\n")
+    .filter((line) => !/^\s*```(?:markdown|md|text)?\s*$/i.test(line))
+    .join("\n")
+    .trim();
+}
+
+export function parseEmailRecipients(input: unknown, maxRecipients = 5) {
+  const values = Array.isArray(input)
+    ? input
+    : typeof input === "string"
+      ? input.split(/[,\n;]/)
+      : [];
+
+  const recipients = Array.from(
+    new Set(
+      values
+        .map((item) => String(item).trim())
+        .filter(Boolean)
+    )
+  );
+
+  if (recipients.length === 0) {
+    throw new Error("At least one recipient email is required");
+  }
+
+  if (recipients.length > maxRecipients) {
+    throw new Error(`Too many recipients. Max allowed: ${maxRecipients}`);
+  }
+
+  const invalid = recipients.find((item) => !EMAIL_RE.test(item));
+
+  if (invalid) {
+    throw new Error(`Invalid recipient email: ${invalid}`);
+  }
+
+  return recipients;
+}
+
+function readBooleanEnv(value: string | undefined, fallback: boolean) {
+  if (!value) return fallback;
+  return ["1", "true", "yes", "on"].includes(value.toLowerCase());
+}
+
+function getEmailConfig() {
+  const host =
+    process.env.EMAIL_SMTP_HOST || process.env.SMTP_HOST || process.env.MAIL_HOST;
+  const user =
+    process.env.EMAIL_SMTP_USER || process.env.SMTP_USER || process.env.MAIL_USER;
+  const pass =
+    process.env.EMAIL_SMTP_PASS || process.env.SMTP_PASS || process.env.MAIL_PASS;
+  const secureValue =
+    process.env.EMAIL_SMTP_SECURE ||
+    process.env.SMTP_SECURE ||
+    process.env.MAIL_SECURE;
+  const secure = readBooleanEnv(secureValue, false);
+  const port = Number(
+    process.env.EMAIL_SMTP_PORT ||
+      process.env.SMTP_PORT ||
+      process.env.MAIL_PORT ||
+      (secure ? 465 : 587)
+  );
+  const from =
+    process.env.EMAIL_FROM ||
+    process.env.SMTP_FROM ||
+    process.env.MAIL_FROM ||
+    user;
+
+  if (!host || !user || !pass || !from) {
+    throw new Error(
+      "Email SMTP config is required: EMAIL_SMTP_HOST/SMTP_HOST, EMAIL_SMTP_USER/SMTP_USER, EMAIL_SMTP_PASS/SMTP_PASS, EMAIL_FROM/SMTP_FROM"
+    );
+  }
+
+  if (!Number.isFinite(port)) {
+    throw new Error("EMAIL_SMTP_PORT/SMTP_PORT must be a valid number");
+  }
+
+  return {
+    host,
+    port,
+    secure,
+    auth: {
+      user,
+      pass
+    },
+    from
+  };
+}
+
+export async function sendAgentReportEmail(params: {
+  recipients: string[];
+  subject: string;
+  markdown: string;
+  fileName: string;
+}) {
+  const config = getEmailConfig();
+  const transporter = nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.secure,
+    auth: config.auth
+  });
+  const markdown = cleanAgentText(params.markdown);
+  const html = await marked.parse(markdown, {
+    async: false
+  });
+
+  const result = await transporter.sendMail({
+    from: config.from,
+    to: params.recipients,
+    subject: params.subject,
+    text: markdown,
+    html,
+    attachments: [
+      {
+        filename: params.fileName,
+        content: markdown,
+        contentType: "text/markdown; charset=utf-8"
+      }
+    ]
+  });
+
+  return {
+    message_id: result.messageId,
+    accepted: result.accepted,
+    rejected: result.rejected
+  };
 }
 
 export async function sendTextToFeishu(text: string) {
@@ -436,9 +629,19 @@ export async function sendTextToFeishu(text: string) {
 
 
 function normalizeFeishuText(text: string, maxLength = 1200) {
-  return text
-    .replace(/\\n/g, "\n")
-    .replace(/\r\n/g, "\n")
+  return cleanAgentText(text)
+    .replace(/^\s*\|?\s*:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+\|?\s*$/gm, "")
+    .replace(/^\s*\|(.+)\|\s*$/gm, (_match, cells: string) => {
+      const content = String(cells)
+        .split("|")
+        .map((cell) => cell.trim())
+        .filter(Boolean)
+        .join(" / ");
+
+      return content ? `- ${content}` : "";
+    })
+    .replace(/^#{1,6}\s+(.+)$/gm, "**$1**")
+    .replace(/\n{3,}/g, "\n\n")
     .trim()
     .slice(0, maxLength);
 }
@@ -690,7 +893,7 @@ export async function sendMarkdownReportFileToFeishu(params: {
   const fileKey = await uploadMarkdownFileToFeishu({
     token,
     fileName,
-    markdown: params.markdown
+    markdown: cleanAgentText(params.markdown)
   });
 
   const sendResult = await sendFeishuFileMessage({

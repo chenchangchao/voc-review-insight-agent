@@ -1,5 +1,10 @@
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "https://api.chenchangchao.com";
+  process.env.VOC_API_INTERNAL_BASE_URL ||
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  process.env.NEXT_PUBLIC_VOC_API_BASE_URL ||
+  "https://api-voc.chenchangchao.com";
+
+const API_INTERNAL_HOST = process.env.VOC_API_INTERNAL_HOST;
 
 export type Metrics = {
   total_reviews: number;
@@ -44,14 +49,24 @@ export type ClusterReview = {
 };
 
 async function fetchJson<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const url = new URL(path.replace(/^\/+/, ""), `${API_BASE_URL.replace(/\/+$/, "")}/`);
+  const headers = new Headers();
+
+  if (API_INTERNAL_HOST) {
+    headers.set("Host", API_INTERNAL_HOST);
+  }
+
+  const res = await fetch(url, {
+    headers,
     next: {
       revalidate: 60
     }
   });
 
   if (!res.ok) {
-    throw new Error(`API request failed: ${res.status} ${res.statusText}`);
+    throw new Error(
+      `API request failed: ${res.status} ${res.statusText} (${url.toString()})`
+    );
   }
 
   return res.json() as Promise<T>;

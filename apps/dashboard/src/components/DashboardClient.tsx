@@ -564,7 +564,7 @@ function SmallStat({
   );
 }
 
-function groupCount<T extends Record<string, any>>(
+function groupCount<T extends Record<string, unknown>>(
   items: T[],
   key: keyof T
 ): { name: string; value: number }[] {

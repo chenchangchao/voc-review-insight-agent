@@ -2,10 +2,11 @@ import {
   cleanAgentText,
   generate8DReportByAgent,
   getAgentClusters,
-  sendMarkdownReportFileToFeishu
+  parseEmailRecipients,
+  sendAgentReportEmail
 } from "@/lib/server/voc-agent";
 
-// export const dynamic = "force-dynamic";
+export const dynamic = "force-dynamic";
 // export const runtime = "nodejs";
 export const maxDuration = 120;
 
@@ -23,6 +24,7 @@ export async function POST(request: Request) {
     const body = await request.json();
     const clusterKey = body.clusterKey;
     const report = body.report;
+    const recipients = parseEmailRecipients(body.email || body.recipients, 3);
 
     if (!clusterKey || typeof clusterKey !== "string") {
       return Response.json(
@@ -46,22 +48,24 @@ export async function POST(request: Request) {
       clusterNameZh = result.cluster.cluster_name_zh;
     }
 
-    const fileResult = await sendMarkdownReportFileToFeishu({
-      clusterKey,
-      clusterNameZh,
-      markdown: reportText
+    const safeName = clusterKey.replace(/[^a-zA-Z0-9_-]/g, "_");
+    const emailResult = await sendAgentReportEmail({
+      recipients,
+      subject: `VOC 8D 报告草稿：${clusterNameZh}`,
+      markdown: reportText,
+      fileName: `8D_Report_${safeName}.md`
     });
 
     return Response.json({
       ok: true,
       cluster_key: clusterKey,
-      push_type: "markdown_file",
-      file_result: fileResult
+      push_type: "email",
+      email_result: emailResult
     });
   } catch (error) {
     return Response.json(
       {
-        error: "feishu_file_push_failed",
+        error: "email_push_failed",
         message: error instanceof Error ? error.message : String(error)
       },
       { status: 500 }

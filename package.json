@@ -1,0 +1,26 @@
+{
+  "name": "voc-review-insight-agent",
+  "version": "0.1.0",
+  "ignoreScripts": [
+    "sharp",
+    "unrs-resolver"
+  ],
+  "packageManager": "bun@1.3.14",
+  "private": true,
+  "scripts": {
+    "dev": "bun --filter '*' dev",
+    "dev:dashboard": "bun --filter voc-dashboard dev",
+    "dev:api": "bun --filter voc-api dev",
+    "build": "bun --filter voc-dashboard build",
+    "lint": "bun --filter voc-dashboard lint",
+    "start:dashboard": "bun --filter voc-dashboard start",
+    "start:api": "bun --filter voc-api start"
+  },
+  "trustedDependencies": [
+    "sharp",
+    "unrs-resolver"
+  ],
+  "workspaces": [
+    "apps/*"
+  ]
+}
