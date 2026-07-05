@@ -201,7 +201,7 @@ export function DashboardClient({ health, metrics, clusters }: Props) {
                 打开 8D 报告 Agent
               </Link>
               <a
-                href="https://api.chenchangchao.com/clusters"
+                href="https://api-voc.chenchangchao.com/clusters"
                 target="_blank"
                 className="inline-flex items-center rounded-full bg-slate-100 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700"
               >
